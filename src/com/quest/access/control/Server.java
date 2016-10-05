@@ -40,9 +40,12 @@ import com.quest.access.useraccess.services.Serviceable;
 import com.quest.access.useraccess.services.Endpoint;
 import com.quest.access.useraccess.services.WebService;
 import com.quest.servlets.ClientWorker;
+import java.io.InputStream;
+import java.net.URLDecoder;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Scanner;
 import java.util.logging.Logger;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
@@ -732,22 +735,46 @@ public class Server {
         
         private String requestId;
         
-        private String preScript = "var kinds, filters, orders, limits;";
+        private String postScript = "\nnextData(run)";
+        
+        private static ScriptEngine engine = Server.scriptEngine;
+       
         
         public BackgroundTask(String aggregator, String requestId, String script){
             this.script = script;
             this.aggregator = aggregator;
             this.requestId = requestId;
         }
+        
+        private String streamToString(InputStream is){
+            Scanner s = new Scanner(is).useDelimiter("\\A");
+            return s.hasNext() ? s.next() : "";
+        }
+        
+        public static void get(String url, String params, String callback){
+            try {
+                String result = Server.get(url + params);
+                if(callback != null && !callback.equals("undefined"))
+                    engine.eval(callback+"("+result+")");
+            } catch (Exception ex) {
+                Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
+        
         @Override
         public void run() {
             try {
                 //perform long running task, with a deadline of 10min
-                script = preScript + script;
-                Object resp = Server.scriptEngine.eval(script);
-                io.out("^^^^^^^^^^^^^^^^^6");
+                String aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
+                engine.put("_aggregator_url_", aggregatorUrl);
+                engine.put("_task_", this);
+                String mcpScript = streamToString(Server.class.getResourceAsStream("mcp.js"));
+                script = URLDecoder.decode(script, "utf-8");
+                mcpScript += script + postScript;
+                io.out(mcpScript);
+                Object resp = engine.eval(mcpScript);
                 io.out(resp);
-            } catch (ScriptException ex) {
+            } catch (Exception ex) {
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
