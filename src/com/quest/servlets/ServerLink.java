@@ -1,5 +1,6 @@
 package com.quest.servlets;
 
+import com.quest.access.common.io;
 import com.quest.access.control.Server;
 import java.io.IOException;
 import java.util.HashMap;
@@ -47,7 +48,7 @@ public class ServerLink extends HttpServlet {
             JSONObject obj = new JSONObject();
             JSONObject requestData;
             JSONObject headers = new JSONObject();
-            String msg,sessionId,service;
+            String msg,service;
             if (json != null) { //here we are dealing with json
                 obj = new JSONObject(json);
                 headers = obj.optJSONObject("request_header");
@@ -62,15 +63,12 @@ public class ServerLink extends HttpServlet {
                 //check for svc, msg, ses_id
                 service = request.getParameter("svc");
                 msg = request.getParameter("msg");
-                sessionId = request.getParameter("ses_id");
                 headers.put("request_msg", msg);
-                headers.put("session_id", sessionId);
                 headers.put("request_svc", service);
                 Map<String, String[]> paramz = request.getParameterMap();
                 HashMap<String, String[]> params = new HashMap(paramz);
                 params.remove("svc");
                 params.remove("msg");
-                params.remove("ses_id");
                 Iterator iter = params.keySet().iterator();
                 while(iter.hasNext()){
                     String key = iter.next().toString();

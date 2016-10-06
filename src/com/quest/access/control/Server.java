@@ -7,13 +7,10 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.net.HttpURLConnection;
-import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.StringTokenizer;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,25 +23,17 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import com.google.appengine.api.datastore.Entity;
-import com.google.appengine.api.datastore.Query.Filter;
-import com.google.appengine.api.datastore.Query.FilterOperator;
-import com.google.appengine.api.datastore.Query.FilterPredicate;
 import com.google.appengine.api.taskqueue.DeferredTask;
-import com.quest.access.common.UniqueRandom;
 import com.quest.access.common.io;
-import com.quest.access.common.datastore.Datastore;
-import com.quest.access.crypto.Security;
 import com.quest.access.useraccess.services.Service;
 import com.quest.access.useraccess.services.Serviceable;
 import com.quest.access.useraccess.services.Endpoint;
 import com.quest.access.useraccess.services.WebService;
 import com.quest.servlets.ClientWorker;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
-import java.util.Arrays;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Scanner;
 import java.util.logging.Logger;
 import javax.script.ScriptEngine;
@@ -56,127 +45,7 @@ import javax.script.ScriptException;
  * @author constant oduol
  * @version 1.0(4/1/2012)
  */
-/**
- * This file defines a server When a new server is created a new database is
- * created along with it the database has the following tables
- * <p>
- * USERS- this table contain details of users on this server PRIVILEGES- this
- * table contains privileges of all the users on this server RESOURCE_GROUPS-
- * this table stores the permanent privileges on this server RESOURCES- this
- * table stores the resources on this server USER_HISTORY- this table stores
- * details of deleted users LOGIN- this table stores the login details of a user
- * for every new login LOGOUT- this table stores the logout details of a user
- * for every logout SERVICES- this table stores the services registered on this
- * server
- * </p>
- * <p>
- * when an instance of a server is created it starts listening for client
- * connections on the port specified during its creation when a client connects
- * the server sends the client a new request for the client to login, the client
- * needs to respond by sending a response with the login details. The server
- * then tries to log in the user, the server then responds to the client with
- * the login status
- * </p>
- *
- * <p>
- * Clients can send requests to a server and a servers can sent requests to
- * clients A server has the method processRequest() which when overriden can be
- * used to process requests from clients. When clients send a request for a
- * service the server class invokes the required service through the private
- * method processClientRequest()
- * </p>
- *
- * <p>
- * A server has a privilege handler class that ensures that only users that have
- * the required privileges access services on the server, users with no
- * privileges have an security exception object returned back to the client to
- * show that the client was denied access to the privilege he was not
- * assigned.Also, once a client logs out of the system, if he tries to access
- * any service a security exception is sent to the client in a response object
- * therefore clients should check the message in a response object if it equals
- * "exception" so as to handle exceptions send by the server
- * </p>
- *
- * <p>
- * Clients can make standard requests to the server sending a request with the
- * following messages makes the server respond as specified
- * <p>
- * logoutuser- this asks the server to log out the user accessing the server
- * through the client that sent the request, sending this request requires the
- * client to send the users username along with the message e.g. new
- * Request(userName,"logoutuser");
- * </p>
- * <p>
- * logoutclient- this asks the server to log out the user accessing the server
- * through the client that sent the request, sending this request does not
- * require the user's user name e.g. new Request("logoutclient");
- * </p>
- * <p>
- * forcelogout- this asks the server to mark the user in the database as logged
- * out, the user name of the user to be marked as logged out is sent in the
- * request object e.g. new Request(userName,"forcelogout");
- * </p>
- * </p>
- *
- * <p>
- * When a user logs in to a server a new Session is created for that user a
- * session has several attributes predefined by the server if ses is an instance
- * of a user session then ses.getAttribute("attributename") returns the required
- * attribute
- * <ol>
- * <li>clientid - this is the id of the connected client</li>
- * <li>username - this is the username of the connected client</li>
- * <li>host - this is the host from which the client is connecting</li>
- * <li>clientip - this is the ip address of the client machine</li>
- * <li>privileges - this is a hashmap containing the privileges of the user</li>
- * <li>userid - this is a string representing the twenty digit system generated
- * id</li>
- * <li>superiority - this is a double value representing the user's
- * superiority</li>
- * <li>created - this is a date object representing when the user was
- * created</li>
- * <li>group - this is the group that the user belongs to or "unassigned" if the
- * user does not belong to any group</li>
- * <li>loginid - this is the system generated id representing the user's most
- * recent login</li>
- * <li>lastlogin - this is the system generated id representing the user's
- * previous login</li>
- * <li>sessionstart - this is a date object representing when this user's
- * session started</li>
- * </ol>
- * </p>
- *
- * <p>
- * The LOGIN table contains details about user logins, the user name, client ip,
- * server ip, and time of login are stored in the login table,similarly the
- * LOGOUT table contains details about successful logouts that is the user name,
- * client ip, server ip and logout time.Login and logout from one session by a
- * client is marked by one id i.e the login id is the same as the logout id for
- * any user session
- * </p>
- *
- * <p>
- * During user login the server normally returns messages depending on the
- * status of the login these messages can be obtained from the returned response
- * object by calling the getResponse() method
- * <ol>
- * <li>notexist - the server returns this response if the user attempting to log
- * in does not exist</li>
- * <li>disabled - the server returns this if the user attempting to log in has
- * his account disabled</li>
- * <li>loggedin - the server returns this if the user attempting to log in is
- * already logged in</li>
- * <li>loginsuccess - the server returns this if the user has been successfully
- * logged in</li>
- * <li>invalidpass - the server returns this if the user trying to log in has a
- * valid username but invalid password</li>
- * <li>changepass - the server returns this if a user's password is expired or
- * for a new user in order for the user to change his password</li>
- * <li>maxpassattempts - this message is sent to inform the client that he has
- * reached the maximum allowed password attempts</li>
- * </ol>
- * </p>
- */
+
 public class Server {
 
     private static ConcurrentHashMap<String, HttpSession> sessions = new ConcurrentHashMap();
@@ -214,8 +83,8 @@ public class Server {
      * the key is the root worker id and the value is an array of client workers
      */
     private ConcurrentHashMap<String, ClientWorker[]> rootWorkers;
-
-    private static ScriptEngine scriptEngine;
+    
+    private static ScriptEngine engine;
     
     public Server() {
         this.runtimeServices = new ConcurrentHashMap();
@@ -223,7 +92,7 @@ public class Server {
         this.sharedRegistry = new ConcurrentHashMap<>();
         this.rootWorkers = new ConcurrentHashMap<>();
         ScriptEngineManager factory = new ScriptEngineManager();
-        scriptEngine = factory.getEngineByName("JavaScript");
+        engine = factory.getEngineByName("JavaScript");
     }
 
 
@@ -369,6 +238,34 @@ public class Server {
                 String inputLine = reader.readLine();
                 reader.close();
                 return new JSONObject(inputLine);
+            } else {
+                return null;
+            }
+        } catch (Exception ex) {
+            java.util.logging.Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+            return null;
+        }
+    }
+    
+    public static String post(String remoteUrl, String urlParams) {
+        try {
+            URL url = new URL(remoteUrl);
+            URLConnection conn = url.openConnection();
+            conn.setRequestProperty("Accept", "text/html");
+            HttpURLConnection httpConn = (HttpURLConnection) conn;
+            httpConn.setRequestMethod("POST");
+            httpConn.setDoOutput(true);
+            DataOutputStream wr = new DataOutputStream(httpConn.getOutputStream());
+            wr.writeBytes(urlParams);
+            wr.flush();
+            wr.close();
+            int responseCode = httpConn.getResponseCode();
+            BufferedReader reader;
+            if (responseCode == 200) {
+                reader = new BufferedReader(new InputStreamReader(httpConn.getInputStream()));
+                String inputLine = reader.readLine();
+                reader.close();
+                return inputLine;
             } else {
                 return null;
             }
@@ -726,6 +623,12 @@ public class Server {
     public void invokeService(ClientWorker worker) {
         processClientRequest(worker);
     }
+    
+    public static String streamToString(InputStream is) {
+        Scanner s = new Scanner(is).useDelimiter("\\A");
+        return s.hasNext() ? s.next() : "";
+    }
+    
 
     public static class BackgroundTask implements DeferredTask{
         
@@ -735,28 +638,58 @@ public class Server {
         
         private String requestId;
         
-        private String postScript = "\nnextData(run)";
+        private String node;
         
-        private static ScriptEngine engine = Server.scriptEngine;
-       
+        private final String postScript = "\nnextData()";
         
-        public BackgroundTask(String aggregator, String requestId, String script){
+        private static ScriptEngine engine = Server.engine;
+        
+        private String aggregatorUrl;
+        
+        public BackgroundTask(String aggregator, String requestId, String script, String node){
             this.script = script;
             this.aggregator = aggregator;
             this.requestId = requestId;
+            this.aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
+            this.node = node;
+            
         }
         
-        private String streamToString(InputStream is){
-            Scanner s = new Scanner(is).useDelimiter("\\A");
-            return s.hasNext() ? s.next() : "";
+        public void sendMessage(String msg){
+            String params = "svc=mcp_service&msg=bg_message&request_id="
+                    +requestId+"&message="+msg+"&script="+script;
+            Server.post(aggregatorUrl, params);
         }
         
-        public static void get(String url, String params, String callback){
+        public void post(String url, String params, String callback){
             try {
-                String result = Server.get(url + params);
-                if(callback != null && !callback.equals("undefined"))
-                    engine.eval(callback+"("+result+")");
+                String result = Server.post(url, params);
+                if(result != null){
+                    JSONObject obj = new JSONObject(result).optJSONObject("results");
+                    Iterator<String> iter = obj.keys();
+                    boolean hasData = false;
+                    while (iter.hasNext()) {
+                        String key = iter.next();
+                        JSONArray data = obj.optJSONArray(key);
+                        if (data.length() > 0) {
+                            hasData = true;
+                            break;
+                        }
+                    }
+                    if (callback != null && !callback.equals("undefined") && hasData) {
+                        engine.eval(callback + "(" + result + ")");
+                    }
+                    else {
+                        //no data mark this as complete
+                        //run the onFinish handler
+                        sendMessage("!!complete");
+                        sendMessage("complete for node : "+node);
+                    }
+                }
+              
             } catch (Exception ex) {
+                //send this error message to the aggregator
+                sendMessage(ex.getLocalizedMessage());
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
@@ -765,16 +698,17 @@ public class Server {
         public void run() {
             try {
                 //perform long running task, with a deadline of 10min
-                String aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
                 engine.put("_aggregator_url_", aggregatorUrl);
+                engine.put("_request_id_", requestId);
                 engine.put("_task_", this);
-                String mcpScript = streamToString(Server.class.getResourceAsStream("mcp.js"));
+                engine.put("_script_", script);
+                String mcpScript = Server.streamToString(Server.class.getResourceAsStream("mcp.js"));
                 script = URLDecoder.decode(script, "utf-8");
                 mcpScript += script + postScript;
-                io.out(mcpScript);
-                Object resp = engine.eval(mcpScript);
-                io.out(resp);
-            } catch (Exception ex) {
+                engine.eval(mcpScript);
+            } catch (UnsupportedEncodingException | ScriptException ex) {
+                sendMessage(ex.getLocalizedMessage());
+                //send this error message to the aggregator
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
