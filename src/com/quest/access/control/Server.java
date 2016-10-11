@@ -39,6 +39,9 @@ import java.util.logging.Logger;
 import javax.script.ScriptEngine;
 import javax.script.ScriptEngineManager;
 import javax.script.ScriptException;
+import org.mozilla.javascript.Context;
+import org.mozilla.javascript.Scriptable;
+import org.mozilla.javascript.ScriptableObject;
 
 /**
  *
@@ -84,15 +87,12 @@ public class Server {
      */
     private ConcurrentHashMap<String, ClientWorker[]> rootWorkers;
     
-    private static ScriptEngine engine;
-    
     public Server() {
         this.runtimeServices = new ConcurrentHashMap();
         this.serviceRegistry = new ConcurrentHashMap();
         this.sharedRegistry = new ConcurrentHashMap<>();
         this.rootWorkers = new ConcurrentHashMap<>();
-        ScriptEngineManager factory = new ScriptEngineManager();
-        engine = factory.getEngineByName("JavaScript");
+        
     }
 
 
@@ -180,7 +180,6 @@ public class Server {
                 Endpoint endpoint = method.getAnnotation(Endpoint.class);
                 if (endpoint != null) {
                     String message = endpoint.name();
-                    String[] modifiers = endpoint.cacheModifiers();
                     String key = message + "_" + serviceClass.getName();
                     String key1 = serviceName + "_" + message;
                     serviceRegistry.put(key, method);
@@ -629,6 +628,23 @@ public class Server {
         return s.hasNext() ? s.next() : "";
     }
     
+    //_service_ service
+    public static Object execScript(String script, HashMap<String, Object> objects){
+        Context ctx = Context.enter();
+        try {
+            Scriptable scope = ctx.initStandardObjects();
+            if(objects != null){
+                for(String key : objects.keySet()){
+                    Object wrappedObject = Context.javaToJS(objects.get(key), scope);
+                    ScriptableObject.putProperty(scope, key, wrappedObject);   
+                }
+            }
+            return ctx.evaluateString(scope, script, "<cmd>", 1, null);
+        } finally {
+            Context.exit();
+        }
+    }
+    
 
     public static class BackgroundTask implements DeferredTask{
         
@@ -642,17 +658,21 @@ public class Server {
         
         private final String postScript = "\nnextData()";
         
-        private static ScriptEngine engine = Server.engine;
-        
         private String aggregatorUrl;
         
-        public BackgroundTask(String aggregator, String requestId, String script, String node){
+        private String mcpScript;
+        
+        
+        
+        public BackgroundTask(String aggregator, String requestId, 
+                String script, String node, String mcpScript){
             this.script = script;
             this.aggregator = aggregator;
             this.requestId = requestId;
-            this.aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
+            //this.aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
+            this.aggregatorUrl = "http://localhost:8200/server";
             this.node = node;
-            
+            this.mcpScript = mcpScript;
         }
         
         public void sendMessage(String msg){
@@ -661,36 +681,15 @@ public class Server {
             Server.post(aggregatorUrl, params);
         }
         
-        public void post(String url, String params, String callback){
+        public String post(String url, String params){
             try {
                 String result = Server.post(url, params);
-                if(result != null){
-                    JSONObject obj = new JSONObject(result).optJSONObject("results");
-                    Iterator<String> iter = obj.keys();
-                    boolean hasData = false;
-                    while (iter.hasNext()) {
-                        String key = iter.next();
-                        JSONArray data = obj.optJSONArray(key);
-                        if (data.length() > 0) {
-                            hasData = true;
-                            break;
-                        }
-                    }
-                    if (callback != null && !callback.equals("undefined") && hasData) {
-                        engine.eval(callback + "(" + result + ")");
-                    }
-                    else {
-                        //no data mark this as complete
-                        //run the onFinish handler
-                        sendMessage("!!complete");
-                        sendMessage("complete for node : "+node);
-                    }
-                }
-              
+                return result;
             } catch (Exception ex) {
                 //send this error message to the aggregator
                 sendMessage(ex.getLocalizedMessage());
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
+                return "{}";
             }
         }
         
@@ -698,15 +697,16 @@ public class Server {
         public void run() {
             try {
                 //perform long running task, with a deadline of 10min
-                engine.put("_aggregator_url_", aggregatorUrl);
-                engine.put("_request_id_", requestId);
-                engine.put("_task_", this);
-                engine.put("_script_", script);
-                String mcpScript = Server.streamToString(Server.class.getResourceAsStream("mcp.js"));
+                HashMap params = new HashMap();
+                params.put("_aggregator_url_", aggregatorUrl);
+                params.put("_request_id_", requestId);
+                params.put("_task_", this);
+                params.put("_script_", script);
+                params.put("_aggregator_state_", new JSONObject());
                 script = URLDecoder.decode(script, "utf-8");
-                mcpScript += script + postScript;
-                engine.eval(mcpScript);
-            } catch (UnsupportedEncodingException | ScriptException ex) {
+                String completeScript = mcpScript + script + postScript;
+                Server.execScript(completeScript, params);
+            } catch (Exception ex) {
                 sendMessage(ex.getLocalizedMessage());
                 //send this error message to the aggregator
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
