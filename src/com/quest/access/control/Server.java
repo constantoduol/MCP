@@ -24,6 +24,9 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import com.google.appengine.api.taskqueue.DeferredTask;
+import com.google.appengine.api.taskqueue.Queue;
+import com.google.appengine.api.taskqueue.QueueFactory;
+import com.google.appengine.api.taskqueue.TaskOptions;
 import com.quest.access.common.io;
 import com.quest.access.useraccess.services.Service;
 import com.quest.access.useraccess.services.Serviceable;
@@ -174,14 +177,11 @@ public class Server {
     private void registerMethods(Class<?> serviceClass) {
         try {
             Method[] methods = serviceClass.getDeclaredMethods();
-            WebService webService = (WebService) serviceClass.getAnnotation(WebService.class);
-            String serviceName = webService != null ? webService.name() : "";
             for (Method method : methods) {
                 Endpoint endpoint = method.getAnnotation(Endpoint.class);
                 if (endpoint != null) {
                     String message = endpoint.name();
                     String key = message + "_" + serviceClass.getName();
-                    String key1 = serviceName + "_" + message;
                     serviceRegistry.put(key, method);
                     String[] shareWith = endpoint.shareMethodWith();
                     for (String shareWith1 : shareWith) {
@@ -662,17 +662,27 @@ public class Server {
         
         private String mcpScript;
         
+        private final long maxDuration = 480000; //8 min
         
+        private long startTime;
+        
+        
+        private class DeadlineReachedException extends Exception {
+            public DeadlineReachedException(){
+                super("Deadline reached when executing deferred task");
+            }
+        }
         
         public BackgroundTask(String aggregator, String requestId, 
                 String script, String node, String mcpScript){
             this.script = script;
             this.aggregator = aggregator;
             this.requestId = requestId;
-            //this.aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
-            this.aggregatorUrl = "http://localhost:8200/server";
+            this.aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
+            //this.aggregatorUrl = "http://localhost:8200/server";
             this.node = node;
             this.mcpScript = mcpScript;
+            startTime = System.currentTimeMillis();
         }
         
         public void sendMessage(String msg){
@@ -681,8 +691,20 @@ public class Server {
             Server.post(aggregatorUrl, params);
         }
         
-        public String post(String url, String params){
+        private void restartTask(){
+            Queue queue = QueueFactory.getDefaultQueue();
+            queue.add(TaskOptions.Builder
+                    .withPayload(new BackgroundTask(aggregator, requestId, script, node, mcpScript))
+                    .etaMillis(System.currentTimeMillis()));//start executing the task now!
+        }
+        
+        public String post(String url, String params, String action){
             try {
+                if(shouldComplete() && action.equals("nextdata")){
+                    //we need to restart this background task
+                    restartTask();
+                    throw new DeadlineReachedException();
+                }
                 String result = Server.post(url, params);
                 return result;
             } catch (Exception ex) {
@@ -691,6 +713,10 @@ public class Server {
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
                 return "{}";
             }
+        }
+        
+        private boolean shouldComplete(){
+            return (System.currentTimeMillis() - startTime) > maxDuration;
         }
         
         @Override
@@ -706,6 +732,7 @@ public class Server {
                 script = URLDecoder.decode(script, "utf-8");
                 String completeScript = mcpScript + script + postScript;
                 Server.execScript(completeScript, params);
+                io.log("run script in background initiated", Level.WARNING, this.getClass());
             } catch (Exception ex) {
                 sendMessage(ex.getLocalizedMessage());
                 //send this error message to the aggregator
