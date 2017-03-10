@@ -40,7 +40,7 @@ import org.json.JSONException;
 //update,select, insert,delete
 public class Datastore {
 
-    private static DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
+    private static final DatastoreService datastore = DatastoreServiceFactory.getDatastoreService();
 
     public static void insert(String entityName, String primaryValue, HashMap<String, Object> values) {
         Key key = KeyFactory.createKey(entityName, primaryValue);
@@ -54,44 +54,44 @@ public class Datastore {
         datastore.put(entity);
     }
 
-    public static void insert(Entity en) {
-        datastore.put(en);
+    public static Key insert(Entity en) {
+        return datastore.put(en);
     }
 
-    public static void insert(String entityName, String[] props, Object[] values) {
+    public static Key insert(String entityName, String[] props, Object[] values) {
         Entity entity = new Entity(entityName);
         for (int x = 0; x < props.length; x++) {
             entity.setProperty(props[x], values[x]);
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
-    public static void insert(String entityName, List<String> props, List<Object> values) {
+    public static Key insert(String entityName, List<String> props, List<Object> values) {
         Entity entity = new Entity(entityName);
         for (int x = 0; x < props.size(); x++) {
             entity.setProperty(props.get(x), values.get(x));
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
-    public static void insert(String entityName, String primaryValue, String[] props, Object[] values) {
+    public static Key insert(String entityName, String primaryValue, String[] props, Object[] values) {
         Key key = KeyFactory.createKey(entityName, primaryValue);
         Entity entity = new Entity(entityName, key);
         for (int x = 0; x < props.length; x++) {
             entity.setProperty(props[x], values[x]);
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
-    public static void insert(String entityName, Key key, String[] props, Object[] values) {
+    public static Key insert(String entityName, Key key, String[] props, Object[] values) {
         Entity entity = new Entity(entityName, key);
         for (int x = 0; x < props.length; x++) {
             entity.setProperty(props[x], values[x]);
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
-    public static void insert(String entityName, String primaryValue, JSONObject values) {
+    public static Key insert(String entityName, String primaryValue, JSONObject values) {
         Key key = KeyFactory.createKey(entityName, primaryValue);
         Entity entity = new Entity(entityName, key);
         Iterator iter = values.keys();
@@ -104,10 +104,10 @@ public class Datastore {
         } catch (Exception e) {
 
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
-    public static void insert(String entityName, HashMap<String, Object> values) {
+    public static Key insert(String entityName, HashMap<String, Object> values) {
         Entity entity = new Entity(entityName);
         Iterator iter = values.keySet().iterator();
         while (iter.hasNext()) {
@@ -115,10 +115,10 @@ public class Datastore {
             Object propertValue = values.get(propertyName);
             entity.setProperty(propertyName, propertValue);
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
-    public static void insert(String entityName, JSONObject values) {
+    public static Key insert(String entityName, JSONObject values) {
         Entity entity = new Entity(entityName);
         Iterator iter = values.keys();
         try {
@@ -130,7 +130,7 @@ public class Datastore {
         } catch (Exception e) {
 
         }
-        datastore.put(entity);
+        return datastore.put(entity);
     }
 
     public static Entity getSingleEntity(String entityName, String propertyName, Object value, FilterOperator filterOperator) {

@@ -650,15 +650,9 @@ public class Server {
         
         private String script;
         
-        private String aggregator;
-        
         private String requestId;
         
-        private String node;
-        
         private final String postScript = "\nnextData()";
-        
-        private String aggregatorUrl;
         
         private String mcpScript;
         
@@ -666,6 +660,7 @@ public class Server {
         
         private long startTime;
         
+        private String selfUrl;
         
         private class DeadlineReachedException extends Exception {
             public DeadlineReachedException(){
@@ -673,28 +668,20 @@ public class Server {
             }
         }
         
-        public BackgroundTask(String aggregator, String requestId, 
-                String script, String node, String mcpScript){
+        public BackgroundTask(String selfUrl,String requestId, 
+                String script, String mcpScript){
             this.script = script;
-            this.aggregator = aggregator;
             this.requestId = requestId;
-            this.aggregatorUrl = "https://" + aggregator + ".appspot.com/server";
-            //this.aggregatorUrl = "http://localhost:8200/server";
-            this.node = node;
             this.mcpScript = mcpScript;
+            this.selfUrl = selfUrl;
             startTime = System.currentTimeMillis();
         }
         
-        public void sendMessage(String msg){
-            String params = "svc=mcp_service&msg=bg_message&request_id="
-                    +requestId+"&message="+msg+"&script="+script;
-            Server.post(aggregatorUrl, params);
-        }
         
         private void restartTask(){
             Queue queue = QueueFactory.getDefaultQueue();
             queue.add(TaskOptions.Builder
-                    .withPayload(new BackgroundTask(aggregator, requestId, script, node, mcpScript))
+                    .withPayload(new BackgroundTask(selfUrl, requestId, script, mcpScript))
                     .etaMillis(System.currentTimeMillis()));//start executing the task now!
         }
         
@@ -702,17 +689,25 @@ public class Server {
             try {
                 if(shouldComplete() && action.equals("nextdata")){
                     //we need to restart this background task
+                    io.log("restarting --> task", Level.WARNING, null);
                     restartTask();
                     throw new DeadlineReachedException();
                 }
                 String result = Server.post(url, params);
                 return result;
             } catch (Exception ex) {
+                sendMessage(ex.toString());
                 //send this error message to the aggregator
-                sendMessage(ex.getLocalizedMessage());
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
                 return "{}";
             }
+        }
+        
+        public void sendMessage(String msg) {
+            String params = "svc=mcp_service&msg=bg_message&request_id="
+                    + requestId + "&message=" + msg + "&script=" + script;
+            io.log("sending-> "+msg, Level.INFO, null);
+            Server.post(selfUrl, params);
         }
         
         private boolean shouldComplete(){
@@ -724,18 +719,17 @@ public class Server {
             try {
                 //perform long running task, with a deadline of 10min
                 HashMap params = new HashMap();
-                params.put("_aggregator_url_", aggregatorUrl);
+                params.put("_self_url_", selfUrl);
                 params.put("_request_id_", requestId);
                 params.put("_task_", this);
                 params.put("_script_", script);
-                params.put("_aggregator_state_", new JSONObject());
-                script = URLDecoder.decode(script, "utf-8");
+                params.put("_self_state_", new JSONObject());
                 String completeScript = mcpScript + script + postScript;
                 Server.execScript(completeScript, params);
                 io.log("run script in background initiated", Level.WARNING, this.getClass());
             } catch (Exception ex) {
-                sendMessage(ex.getLocalizedMessage());
                 //send this error message to the aggregator
+                sendMessage(ex.toString());
                 Logger.getLogger(Server.class.getName()).log(Level.SEVERE, null, ex);
             }
         }
