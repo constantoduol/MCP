@@ -3,38 +3,42 @@ var verbose = false;
 var ECHO_URL = "https://constant4-dot-m-swali-hrd.appspot.com/api/cms/mcp?";
 
 function nextData() {
-    if(!run) return;
-    var next = true;
-    if(beforeNextData)
-        next = beforeNextData();
-    if(!next) {
-        //kill the process and return
-        kill_script();
-        return;
+    try {
+        if(!run) return;
+        var next = true;
+        if(beforeNextData)
+            next = beforeNextData();
+        if(!next) {
+            //kill the process and return
+            kill_script();
+            return;
+        }
+        var params = "request_id="+_request_id_+"&";
+        if (kinds)
+            params += "kinds=" + encodeURIComponent(JSON.stringify(kinds)) + "&";
+        if (filters)
+            params += "filters=" + encodeURIComponent(JSON.stringify(filters)) + "&";
+        if (orders)
+            params += "orders=" + encodeURIComponent(JSON.stringify(orders)) + "&";
+        if (limits)
+            params += "limits=" + encodeURIComponent(JSON.stringify(limits));
+
+        var result = _task_.post(ECHO_URL, params, "nextdata");
+        if(verbose) _task_.sendMessage(result);
+
+        //check if we received any valid data
+        _data_ = {};
+        if(result) _data_ = JSON.parse(result).results;
+        if(verbose) _task_.sendMessage(JSON.stringify(_data_));
+        //perform run if there is data, otherwise send a kill message
+        //to notify that there is no more data to process and call on finish
+        if(hasData(_data_)) 
+            run();
+        else
+            kill_script();
+    } catch(e){
+        _task_.sendMessage(e);
     }
-    var params = "request_id="+_request_id_+"&";
-    if (kinds)
-        params += "kinds=" + encodeURIComponent(JSON.stringify(kinds)) + "&";
-    if (filters)
-        params += "filters=" + encodeURIComponent(JSON.stringify(filters)) + "&";
-    if (orders)
-        params += "orders=" + encodeURIComponent(JSON.stringify(orders)) + "&";
-    if (limits)
-        params += "limits=" + encodeURIComponent(JSON.stringify(limits));
-    
-    var result = _task_.post(ECHO_URL, params, "nextdata");
-    if(verbose) _task_.sendMessage(result);
-    
-    //check if we received any valid data
-    _data_ = {};
-    if(result) _data_ = JSON.parse(result).results;
-    if(verbose) _task_.sendMessage(JSON.stringify(_data_));
-    //perform run if there is data, otherwise send a kill message
-    //to notify that there is no more data to process and call on finish
-    if(hasData(_data_)) 
-        run();
-    else
-        kill_script();
     
 }
 
@@ -89,5 +93,15 @@ function query(kinds, filters, orders, limits, requestId, onData){
          if(onData) onData(result);
          query(kinds, filters, orders, limits, requestId, onData); //recursively go through all the results
     }
+}
+
+function graph_object(type, xkey, ykeys, labels, data){
+    return JSON.stringify({
+        type: type,
+        data: data,
+        xkey: xkey,
+        ykeys: ykeys,
+        labels: labels
+    });
 }
 
