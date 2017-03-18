@@ -121,7 +121,7 @@ public class Datastore {
                 entity.setProperty(propertyName, propertValue);
             }
         } catch (Exception e) {
-
+            e.printStackTrace();
         }
         return datastore.put(entity);
     }

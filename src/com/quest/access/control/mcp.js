@@ -43,7 +43,7 @@ function nextData() {
 }
 
 function kill_script(){
-    var params = "svc=mcp_service&msg=kill_script&request_id="+_request_id_+"&"+"&script="+_script_;
+    var params = "svc=mcp_service&msg=kill_script&request_id="+_request_id_;
     _task_.post(_self_url_, params, "kill_script");
 }
 
@@ -62,7 +62,7 @@ function exit(resp) {
     //get aggregator and send the data
     var postUrl = _self_url_ + "?";
     resp = encodeURIComponent(JSON.stringify(resp));
-    var params = "svc=mcp_service&msg=aggregate&request_id="+_request_id_+"&"+"&response="+resp+"&script="+_script_;
+    var params = "svc=mcp_service&msg=aggregate&request_id="+_request_id_+"&"+"&response="+resp;
     var result = _task_.post(postUrl, params, "aggregate");
     _self_state_ = {};
     if(verbose) _task_.sendMessage(result);
