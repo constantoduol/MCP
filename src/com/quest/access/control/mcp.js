@@ -1,4 +1,4 @@
-var kinds, filters, orders, limits, map, onFinish, reduce, beforeMap;
+var kinds, filters, orders, limits, map, onFinish, reduce, beforeMap, query_types;
 var verbose = false;
 var ECHO_URL = "https://constant4-dot-m-swali-hrd.appspot.com/api/cms/mcp?";
 
@@ -21,8 +21,9 @@ function nextData() {
         if (orders)
             params += "orders=" + encodeURIComponent(JSON.stringify(orders)) + "&";
         if (limits)
-            params += "limits=" + encodeURIComponent(JSON.stringify(limits));
-
+            params += "limits=" + encodeURIComponent(JSON.stringify(limits)) + "&";
+        if (query_types)
+            params += "query_types=" + encodeURIComponent(JSON.stringify(query_types));
         var result = _task_.post(ECHO_URL, params, "nextdata");
         if(verbose) _task_.sendMessage(result);
 
@@ -75,7 +76,7 @@ function exit(resp) {
 }
 
 //this helps to perform a query within map
-function query(kinds, filters, orders, limits, requestId, onData){
+function query(requestId, kinds, filters, orders, limits, query_types, onData){
     //kinds, filters, orders, limits
     if(!requestId) requestId = Math.floor(Math.random()*10000000000);
     var params = "request_id=" + requestId + "&";
@@ -86,7 +87,9 @@ function query(kinds, filters, orders, limits, requestId, onData){
     if (orders)
         params += "orders=" + encodeURIComponent(JSON.stringify(orders)) + "&";
     if (limits)
-        params += "limits=" + encodeURIComponent(JSON.stringify(limits));
+        params += "limits=" + encodeURIComponent(JSON.stringify(limits)) + "&";
+    if (query_types)
+        params += "query_types=" + encodeURIComponent(JSON.stringify(query_types));
     var result = _task_.post(ECHO_URL, params, "query");
     if(result) result = JSON.parse(result).results;
     if(hasData(result)){
@@ -105,11 +108,13 @@ function graph_object(type, xkey, ykeys, labels, data){
     });
 }
 
-function getEntity(en, filterz, onEntityReady){
+function getEntity(en, filterz, query_type, onEntityReady){
     kinds = [en];
     limits = {};
     limits[en] = 1;
     filters = {};
+    query_types = {};
+    if(query_type) query_types[en] = query_type;
     if(filterz) filters[en] = filterz;
     map = function() {
         var entity = _data_[en];
@@ -118,4 +123,41 @@ function getEntity(en, filterz, onEntityReady){
         _task_.sendMessage("action:app.stopPolling()");
     };
 }
+
+function plotGrowth(en, timeProp, from, to, steps){
+    var start = Date.parse(from);
+    var stop = Date.parse(to);
+    if(stop < start){
+        _task_.sendMessage("to date is less than from date");
+        kill_script();
+        return;
+    }
+    kinds = [];
+    query_types = []
+    filters = {};
+    var separator = "#!";
+    if(!steps) steps = 10;
+    var incr = Math.floor((stop - start)/steps);
+    var kindNames = [];
+    for(var x = start; x < stop; x += incr){
+        var kindName = en;
+        if(x > start) kindName += en + separator + (x - start)/incr;
+        kinds.push(en);
+        query_types.push("count");
+        var key = timeProp + " <";
+        filters[kindName] = {};
+        filters[kindName][key] = new Date(x).toISOString();
+        filters[kindName]["_type_" + timeProp] = "datetime";
+        kindNames.push(kindName);
+    }
+    
+    map = function(){
+        _task_.sendMessage("plotting growth graph for " + en);
+        var entity = _data_[en];
+        _task_.sendMessage("action:app.stopPolling()");
+    };
+    
+}
+
+
 
