@@ -1,13 +1,13 @@
-var kinds, filters, orders, limits, run, onFinish, aggregate, beforeNextData;
+var kinds, filters, orders, limits, map, onFinish, reduce, beforeMap;
 var verbose = false;
 var ECHO_URL = "https://constant4-dot-m-swali-hrd.appspot.com/api/cms/mcp?";
 
 function nextData() {
     try {
-        if(!run) return;
+        if(!map) return;
         var next = true;
-        if(beforeNextData)
-            next = beforeNextData();
+        if(beforeMap)
+            next = beforeMap();
         if(!next) {
             //kill the process and return
             kill_script();
@@ -30,10 +30,10 @@ function nextData() {
         _data_ = {};
         if(result) _data_ = JSON.parse(result).results;
         if(verbose) _task_.sendMessage(JSON.stringify(_data_));
-        //perform run if there is data, otherwise send a kill message
+        //perform map if there is data, otherwise send a kill message
         //to notify that there is no more data to process and call on finish
         if(hasData(_data_)) 
-            run();
+            map();
         else
             kill_script();
     } catch(e){
@@ -62,8 +62,8 @@ function exit(resp) {
     //get aggregator and send the data
     var postUrl = _self_url_ + "?";
     resp = encodeURIComponent(JSON.stringify(resp));
-    var params = "svc=mcp_service&msg=aggregate&request_id="+_request_id_+"&"+"&response="+resp;
-    var result = _task_.post(postUrl, params, "aggregate");
+    var params = "svc=mcp_service&msg=reduce&request_id="+_request_id_+"&"+"&response="+resp;
+    var result = _task_.post(postUrl, params, "reduce");
     _self_state_ = {};
     if(verbose) _task_.sendMessage(result);
     if(result) _self_state_ = JSON.parse(result).response.data;
@@ -74,7 +74,7 @@ function exit(resp) {
     nextData();
 }
 
-//this helps to perform a query within run
+//this helps to perform a query within map
 function query(kinds, filters, orders, limits, requestId, onData){
     //kinds, filters, orders, limits
     if(!requestId) requestId = Math.floor(Math.random()*10000000000);
@@ -103,5 +103,19 @@ function graph_object(type, xkey, ykeys, labels, data){
         ykeys: ykeys,
         labels: labels
     });
+}
+
+function getEntity(en, filterz, onEntityReady){
+    kinds = [en];
+    limits = {};
+    limits[en] = 1;
+    filters = {};
+    if(filterz) filters[en] = filterz;
+    map = function() {
+        var entity = _data_[en];
+        _task_.sendMessage(JSON.stringify(entity[0]));
+        if(onEntityReady) onEntityReady(entity[0]);
+        _task_.sendMessage("action:app.stopPolling()");
+    };
 }
 
