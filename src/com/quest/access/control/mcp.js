@@ -33,6 +33,7 @@ function nextData() {
         if(verbose) _task_.sendMessage(JSON.stringify(_data_));
         //perform map if there is data, otherwise send a kill message
         //to notify that there is no more data to process and call on finish
+        log(JSON.stringify(_data_));
         if(hasData(_data_)) 
             map();
         else
@@ -76,7 +77,7 @@ function exit(resp) {
 }
 
 //this helps to perform a query within map
-function query(requestId, kinds, filters, orders, limits, query_types, onData){
+function query(kinds, filters, orders, limits, query_types, requestId, onData){
     //kinds, filters, orders, limits
     if(!requestId) requestId = Math.floor(Math.random()*10000000000);
     var params = "request_id=" + requestId + "&";
@@ -94,18 +95,18 @@ function query(requestId, kinds, filters, orders, limits, query_types, onData){
     if(result) result = JSON.parse(result).results;
     if(hasData(result)){
          if(onData) onData(result);
-         query(kinds, filters, orders, limits, requestId, onData); //recursively go through all the results
+         query(kinds, filters, orders, limits, query_types, requestId, onData); //recursively go through all the results
     }
 }
 
 function graph_object(type, xkey, ykeys, labels, data){
-    return JSON.stringify({
+    return {
         type: type,
         data: data,
         xkey: xkey,
         ykeys: ykeys,
         labels: labels
-    });
+    };
 }
 
 function getEntity(en, filterz, query_type, onEntityReady){
@@ -124,40 +125,102 @@ function getEntity(en, filterz, query_type, onEntityReady){
     };
 }
 
+function parseDate(d){
+    var dt = d.split("-");
+    return new Date(dt[0], dt[1], dt[2]);
+}
+
+function dateYearDiff(from, to){
+    var years = parseDate(to).getFullYear() - parseDate(from).getFullYear();
+    if (years <= 0)
+        years = 1;
+    return years;
+}
+
+//plotGrowth("Account", "create_date", "2012-01-01", "2017-01-01");
 function plotGrowth(en, timeProp, from, to, steps){
-    var start = Date.parse(from);
-    var stop = Date.parse(to);
+    var start = parseDate(from).getTime();
+    var stop = parseDate(to).getTime();
     if(stop < start){
         _task_.sendMessage("to date is less than from date");
         kill_script();
         return;
     }
     kinds = [];
-    query_types = []
+    query_types = {};
     filters = {};
     var separator = "#!";
     if(!steps) steps = 10;
     var incr = Math.floor((stop - start)/steps);
-    var kindNames = [];
-    for(var x = start; x < stop; x += incr){
+    var key = timeProp + " <";    
+    for(var x = start; x <= stop; x += incr){
         var kindName = en;
-        if(x > start) kindName += en + separator + (x - start)/incr;
-        kinds.push(en);
-        query_types.push("count");
-        var key = timeProp + " <";
+        kindName = en + separator + (x - start)/incr;
+        kinds.push(kindName);
+        query_types[kindName] = "count";
         filters[kindName] = {};
         filters[kindName][key] = new Date(x).toISOString();
         filters[kindName]["_type_" + timeProp] = "datetime";
-        kindNames.push(kindName);
     }
-    
     map = function(){
         _task_.sendMessage("plotting growth graph for " + en);
-        var entity = _data_[en];
+        var data = [];
+        var years = dateYearDiff(from, to);
+        var lastCount = 0, firstCount = 0;
+        for(var x = 0; x < kinds.length; x++){
+            var kindName = en + separator + x;
+            var count = _data_[kindName][0].count;
+            if(x === 0) firstCount = count;
+            else if(x === (kinds.length - 1)) lastCount = count;
+            data.push({
+                'time': filters[kindName][key], 
+                'count':  count
+            });
+        }
+        var g = graph_object('line', 'time', ['count'],
+                ['No. of '+en+"(s)"], data);
+        var growth = (lastCount - firstCount)/firstCount;
+        var growthPercent = Math.round(growth*100/years);
+        var nextYear = parseDate(to).getFullYear() + 1;
+        var projected = Math.floor((growthPercent * lastCount)/100 + lastCount);
+        g.parseTime = true;
+        g.title = "A plot of "+en+" growth from "+from+" to "+to;
+        g.stats = [
+            ""+growthPercent+" percent annual growth", 
+            "projected number of "+en+"(s) in "+nextYear+" is " + projected
+        ];
+        g = JSON.stringify(g);
+        _task_.sendMessage("action:app.renderGraph("+g+")");
         _task_.sendMessage("action:app.stopPolling()");
     };
-    
 }
 
+function dumpQuery(){
+    log("dumping query");
+    if(kinds) {
+        log("kinds => " + JSON.stringify(kinds));
+        //_task_.sendMessage("kinds => " + JSON.stringify(kinds));
+    }
+    if(filters) {
+        log("filters => " + JSON.stringify(filters));
+        //_task_.sendMessage("filters => " + JSON.stringify(filters));
+    }
+    if(orders) {
+        log("orders => " + JSON.stringify(orders));
+        //_task_.sendMessage("orders => " + JSON.stringify(orders));
+    }
+    if(limits) {
+        log("limits => " + JSON.stringify(limits));
+        //_task_.sendMessage("limits => " + JSON.stringify(limits));
+    }
+    if(query_types) { 
+        log("query_types => " + JSON.stringify(query_types));
+        //_task_.sendMessage("query_types => " + JSON.stringify(query_types));
+    }
+}
 
+function log(msg){
+    if(!msg) msg = "undefined";
+    java.lang.System.out.println(msg);
+}
 
